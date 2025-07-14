@@ -16,7 +16,7 @@ typedef struct {
     char *stdout_file;
     char *stderr_file;
     char *stdin_file;
-} Redirection;
+} RedirectionFilenames;
 
 typedef struct {
     bool (*match_fn)(const char *);
@@ -224,7 +224,7 @@ static bool is_stdout_append(const char *c) {
  *
  * @return 0 on success, -1 on error.
  */
-int extract_redirection(char *tokens[], const int token_count, Redirection *redir, int *new_token_count) {
+int extract_redirection(char *tokens[], const int token_count, RedirectionFilenames *redir, int *new_token_count) {
     char *temp_tokens[TOKEN_COUNT] = {0};
     int write_index = 0;
 
@@ -277,32 +277,36 @@ int extract_redirection(char *tokens[], const int token_count, Redirection *redi
     return 0;
 }
 
-void apply_single_redirection(RedirSpec *spec) {
-    if (!spec->filename)
-        return;
+void apply_all_redirection(RedirSpec specs[], const int count) {
+    for (int i = 0; i < count; i++) {
+        RedirSpec *spec = &specs[i];
 
-    // TODO: Check for append flag here and do append if true
+        if (!spec->filename)
+            continue;
 
-    int fd = open(spec->filename, spec->open_flags, 0644);
-    if (fd == -1) {
-        perror("open");
-        return;
-    }
+        // TODO: Check for append flag here and do append if true
 
-    spec->saved_fd = dup(spec->target_fd);
-    if (spec->saved_fd == -1) {
-        perror("dup");
+        int fd = open(spec->filename, spec->open_flags, 0644);
+        if (fd == -1) {
+            perror("open");
+            continue;
+        }
+
+        spec->saved_fd = dup(spec->target_fd);
+        if (spec->saved_fd == -1) {
+            perror("dup");
+            close(fd);
+            continue;
+        }
+
+        if (dup2(fd, spec->target_fd) == -1) {
+            perror("dup2");
+            close(fd);
+            continue;
+        }
+
         close(fd);
-        return;
     }
-
-    if (dup2(fd, spec->target_fd) == -1) {
-        perror("dup2");
-        close(fd);
-        return;
-    }
-
-    close(fd);
 }
 
 void restore_single_redirection(RedirSpec *spec) {
@@ -363,7 +367,7 @@ void type(char *command_args[16], const int token_count) {
     }
 }
 
-static void execute_command(const char *command, char *command_args[16], RedirSpec specs[]) {
+static void execute_command(const char *command, char *command_args[16], RedirSpec specs[], int redir_count) {
     char *bin_full_path = find_bin_in_path((char *)command);
     if (bin_full_path == NULL) {
         printf("%s: command not found\n", command);
@@ -372,9 +376,7 @@ static void execute_command(const char *command, char *command_args[16], RedirSp
 
     pid_t pid = fork();
     if (pid == 0) {
-        for (int i = 0; i < 3; i++) {
-            apply_single_redirection(&specs[i]);
-        }
+        apply_all_redirection(specs, redir_count);
         execv(bin_full_path, command_args);
         perror("execv failed");
         exit(1);
@@ -404,7 +406,7 @@ int main() {
             continue;
 
         const char *command = command_args[0];
-        Redirection redir = {0};
+        RedirectionFilenames redir = {0};
         int cleaned_count = token_count;
 
         if (extract_redirection(command_args, token_count, &redir, &cleaned_count) != 0) {
@@ -419,9 +421,7 @@ int main() {
             { STDIN_FILENO, -1, redir.stdin_file, O_RDONLY },
         };
 
-        for (int i = 0; i <  3; i++) {
-            apply_single_redirection(&specs[i]);
-        }
+        apply_all_redirection(specs, sizeof(specs) / sizeof (specs[0]));
 
         if (!strcmp(command, "exit")) {
             free_tokens(command_args, token_count);
@@ -430,6 +430,7 @@ int main() {
 
         if (!strcmp(command, "echo")) {
             echo(command_args, token_count);
+            // TODO: Hardcoded 3 here for redir specs, make dynamic instead
             for (int i = 0; i <  3; i++) {
                 restore_single_redirection(&specs[i]);
             }
@@ -441,6 +442,7 @@ int main() {
             char cwd_buffer[1024];
             char *cwd = getcwd(cwd_buffer, sizeof(cwd_buffer));
             printf("%s\n", cwd);
+            // TODO: Hardcoded 3 here for redir specs, make dynamic instead
             for (int i = 0; i <  3; i++) {
                 restore_single_redirection(&specs[i]);
             }
@@ -451,6 +453,7 @@ int main() {
         if (!strcmp(command, "cd")) {
             char *args = token_count > 1 ? command_args[1] : NULL;
             builtin_cd(args);
+            // TODO: Hardcoded 3 here for redir specs, make dynamic instead
             for (int i = 0; i <  3; i++) {
                 restore_single_redirection(&specs[i]);
             }
@@ -460,6 +463,7 @@ int main() {
 
         if (!strcmp(command, "type")) {
             type(command_args, token_count);
+            // TODO: Hardcoded 3 here for redir specs, make dynamic instead
             for (int i = 0; i <  3; i++) {
                 restore_single_redirection(&specs[i]);
             }
@@ -467,9 +471,10 @@ int main() {
             continue;
         }
 
-        execute_command(command, command_args, specs);
+        execute_command(command, command_args, specs, sizeof(specs) / sizeof (specs[0]));
 
-        for (int i = 0; i <  3; i++) {
+        // TODO: Hardcoded 3 here for redir specs, make dynamic instead
+        for (int i = 0; i < 3; i++) {
             restore_single_redirection(&specs[i]);
         }
 
@@ -479,7 +484,6 @@ int main() {
         if (redir.stdout_file) free(redir.stdout_file);
         if (redir.stderr_file) free(redir.stderr_file);
         if (redir.stdin_file)  free(redir.stdin_file);
-
     }
 
     return 0;
