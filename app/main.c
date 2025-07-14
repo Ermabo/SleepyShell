@@ -12,23 +12,33 @@
 #define INPUT_SIZE   101
 #define TOKEN_COUNT  16
 
+// TODO: Define this alongside RedirSpec[] to make index usage readable
+typedef enum {
+    REDIR_STDOUT,
+    REDIR_STDERR,
+    REDIR_STDIN,
+    REDIR_SPEC_COUNT
+} RedirTarget;
+
+// TODO: REMOVE this, no longer needed if RedirSpec[] directly stores filenames
 typedef struct {
     char *stdout_file;
     char *stderr_file;
     char *stdin_file;
 } RedirectionFilenames;
 
+// TODO: REMOVE this, replacing dynamic function-pointer matching with simple string comparisons
 typedef struct {
     bool (*match_fn)(const char *);
     char **target_field;
 } RedirRule;
 
 typedef struct {
-    int target_fd;
-    int saved_fd;
-    char *filename;
-    int open_flags;
-    bool append_flag;
+    int target_fd;      // STDOUT_FILENO, STDERR_FILENO, etc.
+    int saved_fd;       // backup of original fd to restore later
+    char *filename;     // redirection target file
+    int open_flags;     // O_WRONLY, O_APPEND, etc.
+    bool append_flag;   // TODO: Don't need this, can just modify the open_flags instead
 } RedirSpec;
 
 /**
