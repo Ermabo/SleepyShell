@@ -32,11 +32,16 @@ This has been a way to explore:
 
 ---
 
-## 🚀 Build & run
+### 🚀 Build & run
 
-Requires CMake and a C compiler.
+SleepyShell uses CMake for building.
 
 ```bash
 cmake -B build
 cmake --build build
 ./build/sleepyshell
+```
+Alternatively, if you prefer raw gcc:
+```bash
+gcc app/*.c -o sleepyshell
+./sleepyshell
