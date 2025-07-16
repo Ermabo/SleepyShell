@@ -319,27 +319,31 @@ void apply_all_redirection(RedirSpec specs[], const int count) {
     }
 }
 
-void restore_single_redirection(RedirSpec *spec) {
-    if (spec->saved_fd == -1)
-        return;
+void restore_all_redirection(RedirSpec specs[], const int count) {
+    for (int i = 0; i < count; i++) {
+        RedirSpec *spec = &specs[i];
 
-    if (dup2(spec->saved_fd, spec->target_fd) == -1) {
-        perror("dup2");
+        if (spec->saved_fd == -1)
+            continue;
+
+        if (dup2(spec->saved_fd, spec->target_fd) == -1) {
+            perror("dup2");
+            continue;
+        }
+
+        close(spec->saved_fd);
+
+        spec->saved_fd = -1;
     }
-
-    close(spec->saved_fd);
-    spec->saved_fd = -1;
 }
 
 
 void echo(char *command_args[16], const int token_count) {
     for (int i = 1; i < token_count; i++) {
-        if (is_stdout_redirect(command_args[i]))
-            break;
-
         printf("%s", command_args[i]);
 
-        if (i < token_count - 1 && !is_stdout_redirect(command_args[i + 1]))
+        // Ensure no trailing space after last argument
+        if (i < token_count - 1)
             printf(" ");
     }
 
@@ -440,22 +444,17 @@ int main() {
 
         if (!strcmp(command, "echo")) {
             echo(command_args, token_count);
-            // TODO: Hardcoded 3 here for redir specs, make dynamic instead
-            for (int i = 0; i <  3; i++) {
-                restore_single_redirection(&specs[i]);
-            }
+            restore_all_redirection(specs, sizeof(specs) / sizeof (specs[0]));
             free_tokens(command_args, token_count);
             continue;
         }
 
         if (!strcmp(command, "pwd")) {
+            // TODO: Change bufsize to something more dynamic, also check getcwd for errors
             char cwd_buffer[1024];
             char *cwd = getcwd(cwd_buffer, sizeof(cwd_buffer));
             printf("%s\n", cwd);
-            // TODO: Hardcoded 3 here for redir specs, make dynamic instead
-            for (int i = 0; i <  3; i++) {
-                restore_single_redirection(&specs[i]);
-            }
+            restore_all_redirection(specs, sizeof(specs) / sizeof (specs[0]));
             free_tokens(command_args, token_count);
             continue;
         }
@@ -463,31 +462,21 @@ int main() {
         if (!strcmp(command, "cd")) {
             char *args = token_count > 1 ? command_args[1] : NULL;
             builtin_cd(args);
-            // TODO: Hardcoded 3 here for redir specs, make dynamic instead
-            for (int i = 0; i <  3; i++) {
-                restore_single_redirection(&specs[i]);
-            }
+            restore_all_redirection(specs, sizeof(specs) / sizeof (specs[0]));
             free_tokens(command_args, token_count);
             continue;
         }
 
         if (!strcmp(command, "type")) {
             type(command_args, token_count);
-            // TODO: Hardcoded 3 here for redir specs, make dynamic instead
-            for (int i = 0; i <  3; i++) {
-                restore_single_redirection(&specs[i]);
-            }
+            restore_all_redirection(specs, sizeof(specs) / sizeof (specs[0]));
             free_tokens(command_args, token_count);
             continue;
         }
 
         execute_command(command, command_args, specs, sizeof(specs) / sizeof (specs[0]));
 
-        // TODO: Hardcoded 3 here for redir specs, make dynamic instead
-        for (int i = 0; i < 3; i++) {
-            restore_single_redirection(&specs[i]);
-        }
-
+        restore_all_redirection(specs, sizeof(specs) / sizeof (specs[0]));
         free_tokens(command_args, token_count);
 
         // TODO: Clean this if mess up...
