@@ -444,9 +444,7 @@ int main() {
 
         if (!strcmp(command, "echo")) {
             echo(command_args, token_count);
-            restore_all_redirection(specs, sizeof(specs) / sizeof (specs[0]));
-            free_tokens(command_args, token_count);
-            continue;
+            goto cleanup;
         }
 
         if (!strcmp(command, "pwd")) {
@@ -454,28 +452,23 @@ int main() {
             char cwd_buffer[1024];
             char *cwd = getcwd(cwd_buffer, sizeof(cwd_buffer));
             printf("%s\n", cwd);
-            restore_all_redirection(specs, sizeof(specs) / sizeof (specs[0]));
-            free_tokens(command_args, token_count);
-            continue;
+            goto cleanup;
         }
 
         if (!strcmp(command, "cd")) {
             char *args = token_count > 1 ? command_args[1] : NULL;
             builtin_cd(args);
-            restore_all_redirection(specs, sizeof(specs) / sizeof (specs[0]));
-            free_tokens(command_args, token_count);
-            continue;
+            goto cleanup;
         }
 
         if (!strcmp(command, "type")) {
             type(command_args, token_count);
-            restore_all_redirection(specs, sizeof(specs) / sizeof (specs[0]));
-            free_tokens(command_args, token_count);
-            continue;
+            goto cleanup;
         }
 
         execute_command(command, command_args, specs, sizeof(specs) / sizeof (specs[0]));
 
+        cleanup:
         restore_all_redirection(specs, sizeof(specs) / sizeof (specs[0]));
         free_tokens(command_args, token_count);
 
