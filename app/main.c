@@ -337,20 +337,6 @@ void restore_all_redirection(RedirSpec specs[], const int count) {
     }
 }
 
-
-void echo(char *command_args[16], const int token_count) {
-    for (int i = 1; i < token_count; i++) {
-        printf("%s", command_args[i]);
-
-        // Ensure no trailing space after last argument
-        if (i < token_count - 1)
-            printf(" ");
-    }
-
-    printf("\n");
-}
-
-
 void type(char *command_args[16], const int token_count) {
     const char *builtins[] = {"echo", "exit", "type", "pwd", "cd"};
     const char *args = token_count > 1 ? command_args[1] : NULL;
@@ -443,7 +429,7 @@ int main() {
         }
 
         if (!strcmp(command, "echo")) {
-            echo(command_args, token_count);
+            builtin_echo(command_args, token_count);
             goto cleanup;
         }
 
@@ -456,8 +442,8 @@ int main() {
         }
 
         if (!strcmp(command, "cd")) {
-            char *args = token_count > 1 ? command_args[1] : NULL;
-            builtin_cd(args);
+            char *arg = token_count > 1 ? command_args[1] : NULL;
+            builtin_cd(arg);
             goto cleanup;
         }
 
@@ -472,7 +458,6 @@ int main() {
         restore_all_redirection(specs, sizeof(specs) / sizeof (specs[0]));
         free_tokens(command_args, token_count);
 
-        // TODO: Clean this if mess up...
         if (redir.stdout_file) free(redir.stdout_file);
         if (redir.stderr_file) free(redir.stderr_file);
         if (redir.stdin_file)  free(redir.stdin_file);

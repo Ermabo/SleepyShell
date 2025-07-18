@@ -6,5 +6,5 @@
 #define BUILTINS_H
 
 void builtin_cd(char *arg);
-
+void builtin_echo(char *args[], int arg_count);
 #endif //BUILTINS_H

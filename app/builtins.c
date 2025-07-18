@@ -61,3 +61,15 @@ void builtin_cd(char *arg)
         perror("cd");
     }
 }
+
+void builtin_echo(char *args[], const int arg_count) {
+    for (int i = 1; i < arg_count; i++) {
+        printf("%s", args[i]);
+
+        // Ensure no trailing space after last argument
+        if (i < arg_count - 1)
+            printf(" ");
+    }
+
+    printf("\n");
+}
