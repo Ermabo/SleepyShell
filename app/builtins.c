@@ -73,3 +73,10 @@ void builtin_echo(char *args[], const int arg_count) {
 
     printf("\n");
 }
+
+void builtin_pwd() {
+    // TODO: Change bufsize to something more dynamic, also check getcwd for errors
+    char cwd_buffer[1024];
+    char *cwd = getcwd(cwd_buffer, sizeof(cwd_buffer));
+    printf("%s\n", cwd);
+}

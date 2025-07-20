@@ -434,10 +434,7 @@ int main() {
         }
 
         if (!strcmp(command, "pwd")) {
-            // TODO: Change bufsize to something more dynamic, also check getcwd for errors
-            char cwd_buffer[1024];
-            char *cwd = getcwd(cwd_buffer, sizeof(cwd_buffer));
-            printf("%s\n", cwd);
+            builtin_pwd();
             goto cleanup;
         }
 
