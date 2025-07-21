@@ -5,4 +5,6 @@ set(CMAKE_C_STANDARD 11)
 
 add_executable(sleepyshell app/main.c
         app/builtins.c
+        app/path_utils.h
+        app/path_utils.c
 )

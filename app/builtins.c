@@ -75,7 +75,7 @@ void builtin_echo(char *args[], const int arg_count) {
 }
 
 void builtin_pwd() {
-    // TODO: Change bufsize to something more dynamic, also check getcwd for errors
+    // TODO: Change bufsize to something more dynamic, also check getcwd for errors, can use errno ERANGE to check if buffer was too small
     char cwd_buffer[1024];
     char *cwd = getcwd(cwd_buffer, sizeof(cwd_buffer));
     printf("%s\n", cwd);
