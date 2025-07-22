@@ -5,6 +5,7 @@
 #include <limits.h>
 #include <stdbool.h>
 #include <string.h>
+#include "path_utils.h"
 
 static bool snprintf_fits(int result, const size_t bufsize, char *label) {
     if (result < 0) {
@@ -79,4 +80,40 @@ void builtin_pwd() {
     char cwd_buffer[1024];
     char *cwd = getcwd(cwd_buffer, sizeof(cwd_buffer));
     printf("%s\n", cwd);
+}
+
+void builtin_type(char *command_args[16], const int token_count) {
+    const char *builtins[] = {"echo", "exit", "type", "pwd", "cd"};
+    const char *args = token_count > 1 ? command_args[1] : NULL;
+
+    if (args == NULL || args[0] == '\0') {
+        printf("you need to provide an arg\n");
+        return;
+    }
+
+    bool found = false;
+    const int len = sizeof(builtins) / sizeof(builtins[0]);
+    for (int i = 0; i < len; ++i) {
+        if (!strcmp(builtins[i], args)) {
+            printf("%s is a shell builtin\n", builtins[i]);
+            found = true;
+            break;
+        }
+    }
+
+    if (!found) {
+        char *full_path = util_find_bin_in_path((char *) args);
+        if (full_path) {
+            printf("%s is %s\n", args, full_path);
+            free(full_path);
+        } else {
+            printf("%s: not found\n", args);
+        }
+    }
+}
+
+void builtin_exit(char *args[], const int arg_count) {
+    // TODO: Handle passed in args to exit to allow custom exit codes
+    int exit_code = EXIT_SUCCESS;
+    exit(exit_code);
 }

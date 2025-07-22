@@ -10,7 +10,7 @@
  * @param command  Command name to search for.
  * @return         Malloc'd Full path to the binary, or NULL if not found.
  */
-static char *find_bin_in_path(char *command) {
+char *util_find_bin_in_path(char *command) {
     const char *path = getenv("PATH");
     if (path == NULL)
         return NULL;
