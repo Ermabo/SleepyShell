@@ -76,10 +76,14 @@ void builtin_echo(char *args[], const int arg_count) {
 }
 
 void builtin_pwd() {
-    // TODO: Change bufsize to something more dynamic, also check getcwd for errors, can use errno ERANGE to check if buffer was too small
-    char cwd_buffer[1024];
-    char *cwd = getcwd(cwd_buffer, sizeof(cwd_buffer));
+    char *cwd = getcwd(NULL, 0);
+    if (cwd == NULL) {
+        perror("getcwd");
+        return;
+    }
+
     printf("%s\n", cwd);
+    free(cwd);
 }
 
 void builtin_type(char *command_args[16], const int token_count) {
