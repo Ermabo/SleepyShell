@@ -1,11 +1,11 @@
+#include "path_utils.h"
 #include <assert.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <unistd.h>
 #include <limits.h>
 #include <stdbool.h>
+#include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
-#include "path_utils.h"
+#include <unistd.h>
 
 static bool snprintf_fits(int result, const size_t bufsize, char *label) {
     if (result < 0) {
@@ -15,27 +15,27 @@ static bool snprintf_fits(int result, const size_t bufsize, char *label) {
 
     // Ensure path fits in buffer
     if ((size_t)result >= bufsize) {
-        fprintf(stderr, "%s: output was too long: needed %d bytes, buffer is %zu\n", label ? label : "snprintf", result + 1, bufsize);
+        fprintf(stderr, "%s: output was too long: needed %d bytes, buffer is %zu\n",
+                label ? label : "snprintf", result + 1, bufsize);
         return false;
     }
 
     return true;
 }
 
-static char* expand_home_directory(char *arg, char *buf, const size_t bufsize)
-{
+static char *expand_home_directory(char *arg, char *buf, const size_t bufsize) {
     assert(bufsize > 0);
     assert(buf);
 
     char *home_path = getenv("HOME");
 
-     if (!home_path) {
-         fprintf(stderr, "cd: HOME variable not set\n");
-         return NULL;
-     }
+    if (!home_path) {
+        fprintf(stderr, "cd: HOME variable not set\n");
+        return NULL;
+    }
 
     // Default to home if no argument or argument is just "~"
-    if (!arg || ( arg[0] == '~' && arg [1] == '\0')) {
+    if (!arg || (arg[0] == '~' && arg[1] == '\0')) {
         int len = snprintf(buf, bufsize, "%s", home_path);
         return snprintf_fits(len, bufsize, "cd") ? buf : NULL;
     }
@@ -50,8 +50,7 @@ static char* expand_home_directory(char *arg, char *buf, const size_t bufsize)
     return snprintf_fits(len, bufsize, "cd") ? buf : NULL;
 }
 
-void builtin_cd(char *arg)
-{
+void builtin_cd(char *arg) {
     char target_buf[PATH_MAX];
     char *target_path = expand_home_directory(arg, target_buf, sizeof(target_buf));
 
@@ -106,7 +105,7 @@ void builtin_type(char *command_args[16], const int token_count) {
     }
 
     if (!found) {
-        char *full_path = util_find_bin_in_path((char *) args);
+        char *full_path = util_find_bin_in_path((char *)args);
         if (full_path) {
             printf("%s is %s\n", args, full_path);
             free(full_path);
