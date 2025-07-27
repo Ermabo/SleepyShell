@@ -1,47 +1,31 @@
-#include <errno.h>
-#include <stdbool.h>
-#include <stdio.h>
-#include <string.h>
-#include <stdlib.h>
-#include <unistd.h>
-#include <sys/wait.h>
-#include <fcntl.h>
 #include "builtins.h"
 #include "path_utils.h"
 
+#include <assert.h>
+#include <errno.h>
+#include <fcntl.h>
+#include <stdbool.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/wait.h>
+#include <unistd.h>
 
-#define INPUT_SIZE   101
-#define TOKEN_COUNT  16
+#define INPUT_SIZE 101
+#define MAX_TOKEN_COUNT 16
 
-// TODO: Define this alongside RedirSpec[] to make index usage readable
-typedef enum {
-    REDIR_STDOUT,
-    REDIR_STDERR,
-    REDIR_STDIN,
-    REDIR_SPEC_COUNT
-} RedirTarget;
-
-// TODO: REMOVE this, no longer needed if RedirSpec[] directly stores filenames
+/**
+ * @target_fd   The file descriptor we’ll redirect (e.g. STDOUT_FILENO).
+ * @saved_fd    Backup of the original target_fd (initialized to –1).
+ * @filename    NULL or a strdup’d string that the caller must free.
+ * @open_flags  Flags passed to open(), e.g. O_WRONLY|O_CREAT|O_TRUNC.
+ */
 typedef struct {
-    char *stdout_file;
-    char *stderr_file;
-    char *stdin_file;
-} RedirectionFilenames;
-
-// TODO: REMOVE this, replacing dynamic function-pointer matching with simple string comparisons
-typedef struct {
-    bool (*match_fn)(const char *);
-    char **target_field;
-} RedirRule;
-
-typedef struct {
-    int target_fd;      // STDOUT_FILENO, STDERR_FILENO, etc.
-    int saved_fd;       // backup of original fd to restore later
-    char *filename;     // redirection target file
-    int open_flags;     // O_WRONLY, O_APPEND, etc.
-    bool append_flag;   // TODO: Don't need this, can just modify the open_flags instead
+    int target_fd;
+    int saved_fd;
+    char *filename;
+    int open_flags;
 } RedirSpec;
-
 
 /**
  * Tokenizes shell input into arguments.
@@ -62,7 +46,8 @@ static int tokenize_input(const char *input, char *tokens[], const int max_token
     while (input[i] != '\0') {
         const char c = input[i];
 
-        // TODO: Check which parts of the code we can extract into functions, maybe even create a new tokenizer module
+        // TODO: Check which parts of the code we can extract into functions, maybe even create a
+        // new tokenizer module
         if (c == '\'' || c == '"') {
             if (quote == 0) {
                 quote = c;
@@ -144,7 +129,6 @@ static int tokenize_input(const char *input, char *tokens[], const int max_token
     return token_count;
 }
 
-
 /**
  * @brief Frees shell command tokens.
  *
@@ -164,86 +148,126 @@ static bool is_stdout_redirect(const char *c) {
     return strcmp(c, ">") == 0 || strcmp(c, "1>") == 0;
 }
 
-static bool is_stderr_redirect(const char *c) {
-    return strcmp(c, "2>") == 0;
-}
+static bool is_stdin_redirect(const char *c) { return strcmp(c, "<") == 0; }
 
-static bool is_stdout_append(const char *c) {
-    return strcmp(c, ">>") == 0;
-}
+static bool is_stdout_append(const char *c) { return strcmp(c, ">>") == 0; }
 
+static bool is_stderr_redirect(const char *c) { return strcmp(c, "2>") == 0; }
+
+static bool is_stderr_append(const char *c) { return strcmp(c, "2>>") == 0; }
 
 /**
- * Extracts redirection info from tokens[], and updates the token array.
+ * extract_redirection - remove I/O redirections from argv
+ * @tokens:     array of malloc'd strings
+ * @token_count: original count
+ * @new_token_count: out: new count after removing ops+filenames
+ * @redir_specs_count_out: out: number of specs (always 3)
  *
- * @param tokens           Input/output array of string tokens.
- * @param token_count      Number of original tokens.
- * @param redir            Output struct for redirection info.
- * @param new_token_count  Optional. If not NULL, will be set to the updated token count.
- *
- * @return 0 on success, -1 on error.
+ * Returns a malloc'd RedirSpec[3] (stdout, stderr, stdin), with
+ * .filename == NULL if untouched, or a strdup'd target on success.
+ * Returns NULL on parse or alloc failure (tokens[] left intact).
  */
-int extract_redirection(char *tokens[], const int token_count, RedirectionFilenames *redir, int *new_token_count) {
-    char *temp_tokens[TOKEN_COUNT] = {0};
+RedirSpec *extract_redirection(char *tokens[], int token_count, int *new_token_count,
+                               int *redir_specs_count_out) {
+    assert(new_token_count && redir_specs_count_out);
+    assert(token_count < MAX_TOKEN_COUNT);
+
+    char *kept_tokens[MAX_TOKEN_COUNT];
+    char *dropped_tokens[MAX_TOKEN_COUNT];
+    int dropped_tokens_index = 0;
     int write_index = 0;
 
-    RedirRule rules[] = {
-        { is_stdout_redirect, &redir->stdout_file },
-        { is_stderr_redirect, &redir->stderr_file }
-    };
-    int rule_count = sizeof(rules) / sizeof(rules[0]);
+    const int redir_spec_count = 3;
+    *redir_specs_count_out = redir_spec_count;
+    RedirSpec *redir_specs = calloc(redir_spec_count, sizeof *redir_specs);
+    if (!redir_specs) {
+        perror("calloc");
+        return NULL;
+    }
+
+    const int default_fds[3] = {STDOUT_FILENO, STDERR_FILENO, STDIN_FILENO};
+    for (int i = 0; i < redir_spec_count; i++) {
+        redir_specs[i].target_fd = default_fds[i];
+        redir_specs[i].saved_fd = -1;
+    }
 
     for (int i = 0; i < token_count; i++) {
-        bool matched = false;
+        int fd = -1;
+        int open_flags = 0;
 
-        for (int r = 0; r < rule_count; r++) {
-            if (rules[r].match_fn(tokens[i])) {
-                if (i + 1 >= token_count) {
-                    // TODO: 4 levels of indentation/nesting here. Needs redesign
-                    fprintf(stderr, "syntax error: expected file after redirection\n");
-                    return -1;
-                }
-                *rules[r].target_field = strdup(tokens[i + 1]);
-                free(tokens[i]);
-                free(tokens[i + 1]);
-
-                i++; // Skip filename which is the next token
-                matched = true;
-                break;
-            }
+        if (is_stdout_redirect(tokens[i])) {
+            fd = STDOUT_FILENO;
+            open_flags = O_WRONLY | O_CREAT | O_TRUNC;
+        } else if (is_stdout_append(tokens[i])) {
+            fd = STDOUT_FILENO;
+            open_flags = O_WRONLY | O_CREAT | O_APPEND;
+        } else if (is_stderr_redirect(tokens[i])) {
+            fd = STDERR_FILENO;
+            open_flags = O_WRONLY | O_CREAT | O_TRUNC;
+        } else if (is_stderr_append(tokens[i])) {
+            fd = STDERR_FILENO;
+            open_flags = O_WRONLY | O_CREAT | O_APPEND;
+        } else if (is_stdin_redirect(tokens[i])) {
+            fd = STDIN_FILENO;
+            open_flags = O_RDONLY;
         }
 
-        if (!matched)
-            temp_tokens[write_index++] = tokens[i];
+        if (fd != -1) {
+            if (i + 1 >= token_count) {
+                fprintf(stderr, "syntax error: expected file after '%s'\n", tokens[i]);
+                goto error;
+            }
+            for (int j = 0; j < redir_spec_count; j++) {
+                if (redir_specs[j].target_fd == fd) {
+                    free(redir_specs[j].filename);
+                    redir_specs[j].filename = strdup(tokens[i + 1]); // Copy filename
+                    if (!redir_specs[j].filename) {
+                        perror("strdup");
+                        goto error;
+                    }
+                    redir_specs[j].open_flags = open_flags;
+                }
+            }
+            // Trash the redir token and filename, defer freeing until after we know parse succeeded
+            dropped_tokens[dropped_tokens_index++] = tokens[i];
+            dropped_tokens[dropped_tokens_index++] = tokens[i + 1];
+            i++; // Skip the filename
+            continue;
+        }
+        kept_tokens[write_index++] = tokens[i];
     }
 
-    temp_tokens[write_index] = NULL;
-
-    // Copy back to original tokens[]
-    for (int i = 0; i <= write_index; i++) {
-        tokens[i] = temp_tokens[i];
+    for (int i = 0; i < dropped_tokens_index; i++) {
+        free(dropped_tokens[i]);
     }
 
-    if (new_token_count) {
-        *new_token_count = write_index;
-    }
+    // Copy back & terminate
+    for (int i = 0; i < write_index; i++)
+        tokens[i] = kept_tokens[i];
 
-    // Clear any leftover tokens to avoid dangling pointers or stale data
-    for (int i = write_index + 1; i < token_count; i++) {
+    tokens[write_index] = NULL;
+    *new_token_count = write_index;
+
+    // Clear any stale pointers
+    for (int i = write_index + 1; i < token_count; i++)
         tokens[i] = NULL;
-    }
 
-    return 0;
+    return redir_specs;
+
+error:
+    for (int j = 0; j < redir_spec_count; j++)
+        free(redir_specs[j].filename);
+    free(redir_specs);
+    return NULL;
 }
 
 void apply_all_redirection(RedirSpec specs[], const int count) {
+
     for (int i = 0; i < count; i++) {
         RedirSpec *spec = &specs[i];
 
         if (!spec->filename)
             continue;
-
-        // TODO: Check for append flag here and do append if true
 
         int fd = open(spec->filename, spec->open_flags, 0644);
         if (fd == -1) {
@@ -286,7 +310,8 @@ void restore_all_redirection(RedirSpec specs[], const int count) {
     }
 }
 
-static void execute_command(const char *command, char *command_args[16], RedirSpec specs[], int redir_count) {
+static void execute_command(const char *command, char *command_args[16], RedirSpec specs[],
+                            int redir_count) {
     char *bin_full_path = util_find_bin_in_path((char *)command);
     if (bin_full_path == NULL) {
         printf("%s: command not found\n", command);
@@ -305,7 +330,7 @@ static void execute_command(const char *command, char *command_args[16], RedirSp
     free(bin_full_path);
 }
 
-int main() {
+int main(void) {
     while (1) {
         setbuf(stdout, NULL);
         printf("$ ");
@@ -315,68 +340,56 @@ int main() {
             printf("\n");
             break;
         }
-
         input[strcspn(input, "\n")] = '\0';
 
-        char *command_args[TOKEN_COUNT];
-        int token_count = tokenize_input(input, command_args, TOKEN_COUNT);
-
-        if (token_count <= 0)
-            continue;
-
-        const char *command = command_args[0];
-        RedirectionFilenames redir = {0};
-        int cleaned_count = token_count;
-
-        if (extract_redirection(command_args, token_count, &redir, &cleaned_count) != 0) {
+        char *command_args[MAX_TOKEN_COUNT];
+        int token_count = tokenize_input(input, command_args, MAX_TOKEN_COUNT);
+        if (token_count <= 0) {
             free_tokens(command_args, token_count);
             continue;
         }
+
+        const char *command = command_args[0];
+        int cleaned_count = token_count;
+        int redir_specs_count = 0;
+
+        RedirSpec *specs =
+            extract_redirection(command_args, token_count, &cleaned_count, &redir_specs_count);
+        if (!specs) {
+            fprintf(stderr, "Failed to parse redirections\n");
+            free_tokens(command_args, token_count);
+            continue;
+        }
+
         token_count = cleaned_count;
-
-        RedirSpec specs[] = {
-            { STDOUT_FILENO, -1, redir.stdout_file, O_WRONLY | O_CREAT | O_TRUNC },
-            { STDERR_FILENO, -1, redir.stderr_file, O_WRONLY | O_CREAT | O_TRUNC },
-            { STDIN_FILENO, -1, redir.stdin_file, O_RDONLY },
-        };
-
-        apply_all_redirection(specs, sizeof(specs) / sizeof (specs[0]));
+        apply_all_redirection(specs, redir_specs_count);
 
         if (!strcmp(command, "exit")) {
             free_tokens(command_args, token_count);
-            builtin_exit(command_args, token_count); // TODO: Don't need to free here right since we exit program anyway?
+            builtin_exit(command_args, token_count);
+            break; // or return 0;
         }
 
         if (!strcmp(command, "echo")) {
             builtin_echo(command_args, token_count);
-            goto cleanup;
-        }
-
-        if (!strcmp(command, "pwd")) {
+        } else if (!strcmp(command, "pwd")) {
             builtin_pwd();
-            goto cleanup;
-        }
-
-        if (!strcmp(command, "cd")) {
+        } else if (!strcmp(command, "cd")) {
             char *arg = token_count > 1 ? command_args[1] : NULL;
             builtin_cd(arg);
-            goto cleanup;
-        }
-
-        if (!strcmp(command, "type")) {
+        } else if (!strcmp(command, "type")) {
             builtin_type(command_args, token_count);
-            goto cleanup;
+        } else {
+            execute_command(command, command_args, specs, redir_specs_count);
         }
 
-        execute_command(command, command_args, specs, sizeof(specs) / sizeof (specs[0]));
-
-        cleanup:
-        restore_all_redirection(specs, sizeof(specs) / sizeof (specs[0]));
+        // cleanup
+        restore_all_redirection(specs, redir_specs_count);
         free_tokens(command_args, token_count);
-
-        if (redir.stdout_file) free(redir.stdout_file);
-        if (redir.stderr_file) free(redir.stderr_file);
-        if (redir.stdin_file)  free(redir.stdin_file);
+        for (int i = 0; i < redir_specs_count; i++) {
+            free(specs[i].filename);
+        }
+        free(specs);
     }
 
     return 0;
