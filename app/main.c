@@ -12,7 +12,8 @@
 #include <unistd.h>
 
 #define INPUT_SIZE 101
-#define MAX_TOKEN_COUNT 16
+#define MAX_ARGS 16
+#define MAX_TOKEN_COUNT (MAX_ARGS + 1)
 
 /**
  * @target_fd   The file descriptor we’ll redirect (e.g. STDOUT_FILENO).
@@ -28,15 +29,19 @@ typedef struct {
 } RedirSpec;
 
 /**
- * Tokenizes shell input into arguments.
+ * Splits input into at most capacity-1 tokens, always NULL‑terminating tokens[].
  *
- * @param input       User input string.
- * @param tokens      Output array for tokens.
- * @param max_tokens  Maximum number of tokens allowed.
- * @return            Number of tokens parsed, or -1 on error.
+ * @param input     The line to tokenize.
+ * @param tokens    Array of capacity pointers.
+ * @param capacity  Total size of tokens[] (must be ≥2).
+ * @return          Number of real tokens (0..capacity-1), or -1 on error.
  */
-static int tokenize_input(const char *input, char *tokens[], const int max_tokens) {
+static int tokenize_input(const char *input, char *tokens[], int capacity) {
     // TODO: Better error handling, perhaps return an enum with tokenizer_errors instead
+    if (capacity < 2)
+        return -1;
+
+    int max_tokens = capacity - 1;
     char token_buffer[128]; // TODO: Should probably look over buffer sizing
     int token_len = 0;
     int token_count = 0;
@@ -63,9 +68,8 @@ static int tokenize_input(const char *input, char *tokens[], const int max_token
         if (quote == '"' && c == '\\') {
             const char next = input[i + 1];
             if (next == '\0') {
-                token_buffer[token_len++] = c;
-                i++;
-                continue; // TODO: Can't we just break here?
+                // No character to escape: end token and drop trailing backslash
+                break;
             }
 
             if (next == '"' || next == '\\' || next == '$' || next == '\n') {
@@ -78,12 +82,12 @@ static int tokenize_input(const char *input, char *tokens[], const int max_token
         if (quote == 0 && c == '\\') {
             const char next = input[i + 1];
             if (next == '\0') {
-                i++;
-                continue;
+                // We don’t support line‐continuation here—drop trailing '\' and finish token
+                break;
             }
 
             if (token_len >= sizeof(token_buffer) - 1)
-                return -1;
+                goto error;
 
             token_buffer[token_len++] = next;
             i += 2;
@@ -99,15 +103,18 @@ static int tokenize_input(const char *input, char *tokens[], const int max_token
 
             token_buffer[token_len] = '\0';
             if (token_count >= max_tokens)
+                // TODO: Jump to error label to cleanup strdup'd tokens
                 return -1;
 
             tokens[token_count++] = strdup(token_buffer);
+            // TODO: Jump to error label to cleanup strdup'd tokens
             token_len = 0;
             i++;
             continue;
         }
 
         if (token_len >= sizeof(token_buffer) - 1)
+            // TODO: Jump to error label to cleanup strdup'd tokens
             return -1;
 
         token_buffer[token_len++] = c;
@@ -115,18 +122,27 @@ static int tokenize_input(const char *input, char *tokens[], const int max_token
     }
 
     if (quote != 0)
+        // TODO: Jump to error label to cleanup strdup'd tokens
         return -1;
 
     if (token_len > 0) {
         token_buffer[token_len] = '\0';
         if (token_count >= max_tokens)
+            // TODO: Jump to error label to cleanup strdup'd tokens
             return -1;
 
         tokens[token_count++] = strdup(token_buffer);
+        // TODO: Jump to error label to cleanup strdup'd tokens
     }
 
     tokens[token_count] = NULL;
     return token_count;
+
+error:
+    for (int j = 0; j < token_count; j++) {
+        free(tokens[j]);
+    }
+    return -1;
 }
 
 /**
