@@ -1,3 +1,4 @@
+#define _POSIX_C_SOURCE 200809L
 #include "path_utils.h"
 #include <assert.h>
 #include <limits.h>
@@ -6,6 +7,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+
+static const char *BUILTINS[] = {"echo", "exit", "type", "pwd", "cd", NULL};
 
 static bool snprintf_fits(int result, const size_t bufsize, char *label) {
     if (result < 0) {
@@ -86,19 +89,17 @@ void builtin_pwd() {
 }
 
 void builtin_type(char *command_args[16], const int token_count) {
-    const char *builtins[] = {"echo", "exit", "type", "pwd", "cd"};
     const char *args = token_count > 1 ? command_args[1] : NULL;
 
     if (args == NULL || args[0] == '\0') {
-        printf("you need to provide an arg\n");
+        fprintf(stderr, "type: missing operand\n");
         return;
     }
 
     bool found = false;
-    const int len = sizeof(builtins) / sizeof(builtins[0]);
-    for (int i = 0; i < len; ++i) {
-        if (!strcmp(builtins[i], args)) {
-            printf("%s is a shell builtin\n", builtins[i]);
+    for (int i = 0; BUILTINS[i] != NULL; i++) {
+        if (!strcmp(BUILTINS[i], args)) {
+            printf("%s is a shell builtin\n", BUILTINS[i]);
             found = true;
             break;
         }
@@ -119,4 +120,16 @@ void builtin_exit(char *args[], const int arg_count) {
     // TODO: Handle passed in args to exit to allow custom exit codes
     int exit_code = EXIT_SUCCESS;
     exit(exit_code);
+}
+
+bool builtin_is_builtin(const char *cmd) {
+    if (!cmd)
+        return false;
+
+    for (int i = 0; BUILTINS[i]; i++) {
+        if (!strcmp(BUILTINS[i], cmd))
+            return true;
+    }
+
+    return false;
 }
