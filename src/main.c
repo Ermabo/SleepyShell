@@ -197,18 +197,18 @@ void restore_all_redirection(RedirSpec specs[], const int count) {
     }
 }
 
-static void execute_command(const char *command, char *command_args[16], RedirSpec specs[],
+static void execute_command(const char *program_name, char *argv[16], RedirSpec specs[],
                             int redir_count) {
-    char *bin_full_path = util_find_bin_in_path((char *)command);
+    char *bin_full_path = util_find_bin_in_path(program_name);
     if (bin_full_path == NULL) {
-        printf("%s: command not found\n", command);
+        printf("%s: command not found\n", program_name);
         return;
     }
 
     pid_t pid = fork();
     if (pid == 0) {
         apply_all_redirection(specs, redir_count);
-        execv(bin_full_path, command_args);
+        execv(bin_full_path, argv);
         perror("execv failed");
         exit(1);
     }

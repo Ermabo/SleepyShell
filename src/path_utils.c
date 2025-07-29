@@ -12,7 +12,7 @@
  * @return              Malloc'd full path to the binary, or NULL if not found.
  *                      Caller is responsible for freeing the result.
  */
-char *util_find_bin_in_path(char *program_name) {
+char *util_find_bin_in_path(const char *program_name) {
     const char *path = getenv("PATH");
     if (path == NULL)
         return NULL;
