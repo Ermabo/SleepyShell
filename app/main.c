@@ -32,7 +32,7 @@ typedef struct {
  * Splits input into at most capacity-1 tokens, always NULL‑terminating tokens[].
  *
  * @param input     The line to tokenize.
- * @param tokens    Array of capacity pointers.
+ * @param tokens    Output array of tokens.
  * @param capacity  Total size of tokens[] (must be ≥2).
  * @return          Number of real tokens (0..capacity-1), or -1 on error.
  */
@@ -50,9 +50,6 @@ static int tokenize_input(const char *input, char *tokens[], int capacity) {
     char quote = 0;
     while (input[i] != '\0') {
         const char c = input[i];
-
-        // TODO: Check which parts of the code we can extract into functions, maybe even create a
-        // new tokenizer module
         if (c == '\'' || c == '"') {
             if (quote == 0) {
                 quote = c;
@@ -102,37 +99,45 @@ static int tokenize_input(const char *input, char *tokens[], int capacity) {
             }
 
             token_buffer[token_len] = '\0';
-            if (token_count >= max_tokens)
-                // TODO: Jump to error label to cleanup strdup'd tokens
-                return -1;
 
-            tokens[token_count++] = strdup(token_buffer);
-            // TODO: Jump to error label to cleanup strdup'd tokens
+            if (token_count >= max_tokens)
+                goto  error;
+
+            char *token = strdup(token_buffer);
+            if (!token) {
+                perror("strdup");
+                goto error;
+            }
+
+            tokens[token_count++] = token;
             token_len = 0;
             i++;
             continue;
         }
 
         if (token_len >= sizeof(token_buffer) - 1)
-            // TODO: Jump to error label to cleanup strdup'd tokens
-            return -1;
+            goto error;
+
 
         token_buffer[token_len++] = c;
         i++;
     }
 
     if (quote != 0)
-        // TODO: Jump to error label to cleanup strdup'd tokens
-        return -1;
+       goto error;
 
     if (token_len > 0) {
-        token_buffer[token_len] = '\0';
         if (token_count >= max_tokens)
-            // TODO: Jump to error label to cleanup strdup'd tokens
-            return -1;
+            goto error;
 
-        tokens[token_count++] = strdup(token_buffer);
-        // TODO: Jump to error label to cleanup strdup'd tokens
+        token_buffer[token_len] = '\0';
+        char *token = strdup(token_buffer);
+        if (!token) {
+            perror("strdup");
+            goto error;
+        }
+
+        tokens[token_count++] = token;
     }
 
     tokens[token_count] = NULL;
@@ -235,8 +240,10 @@ RedirSpec *extract_redirection(char *tokens[], int token_count, int *new_token_c
             }
             for (int j = 0; j < redir_spec_count; j++) {
                 if (redir_specs[j].target_fd == fd) {
+                    // POSIX shell behavior: last redirection to the same FD wins
                     free(redir_specs[j].filename);
-                    redir_specs[j].filename = strdup(tokens[i + 1]); // Copy filename
+                    // Copy filename
+                    redir_specs[j].filename = strdup(tokens[i + 1]);
                     if (!redir_specs[j].filename) {
                         perror("strdup");
                         goto error;
@@ -278,7 +285,6 @@ error:
 }
 
 void apply_all_redirection(RedirSpec specs[], const int count) {
-
     for (int i = 0; i < count; i++) {
         RedirSpec *spec = &specs[i];
 
@@ -353,55 +359,60 @@ int main(void) {
 
         char input[INPUT_SIZE];
         if (!fgets(input, INPUT_SIZE, stdin)) {
+            if (feof(stdin)) {
+                printf("\nexit\n");
+                return 0;
+            }
+            perror("fgets");
             printf("\n");
-            break;
+            return 1;
         }
-        input[strcspn(input, "\n")] = '\0';
 
-        char *command_args[MAX_TOKEN_COUNT];
-        int token_count = tokenize_input(input, command_args, MAX_TOKEN_COUNT);
+        input[strcspn(input, "\n")] = '\0';
+        char *tokens[MAX_TOKEN_COUNT];
+        int token_count = tokenize_input(input, tokens, MAX_TOKEN_COUNT);
         if (token_count <= 0) {
-            free_tokens(command_args, token_count);
             continue;
         }
 
-        const char *command = command_args[0];
+        const char *command = tokens[0];
         int cleaned_count = token_count;
         int redir_specs_count = 0;
 
         RedirSpec *specs =
-            extract_redirection(command_args, token_count, &cleaned_count, &redir_specs_count);
+            extract_redirection(tokens, token_count, &cleaned_count, &redir_specs_count);
         if (!specs) {
             fprintf(stderr, "Failed to parse redirections\n");
-            free_tokens(command_args, token_count);
+            free_tokens(tokens, token_count);
             continue;
         }
 
         token_count = cleaned_count;
+        // TODO: Only apply redirecton here if its a builtin command, add a builtin dispatcher in builtins
         apply_all_redirection(specs, redir_specs_count);
 
         if (!strcmp(command, "exit")) {
-            free_tokens(command_args, token_count);
-            builtin_exit(command_args, token_count);
-            break; // or return 0;
+            free_tokens(tokens, token_count);
+            builtin_exit(tokens, token_count);
+            break;
         }
 
         if (!strcmp(command, "echo")) {
-            builtin_echo(command_args, token_count);
+            builtin_echo(tokens, token_count);
         } else if (!strcmp(command, "pwd")) {
             builtin_pwd();
         } else if (!strcmp(command, "cd")) {
-            char *arg = token_count > 1 ? command_args[1] : NULL;
+            char *arg = token_count > 1 ? tokens[1] : NULL;
             builtin_cd(arg);
         } else if (!strcmp(command, "type")) {
-            builtin_type(command_args, token_count);
+            builtin_type(tokens, token_count);
         } else {
-            execute_command(command, command_args, specs, redir_specs_count);
+            execute_command(command, tokens, specs, redir_specs_count);
         }
 
         // cleanup
         restore_all_redirection(specs, redir_specs_count);
-        free_tokens(command_args, token_count);
+        free_tokens(tokens, token_count);
         for (int i = 0; i < redir_specs_count; i++) {
             free(specs[i].filename);
         }
