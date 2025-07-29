@@ -6,10 +6,11 @@
 #include <unistd.h>
 
 /**
- * Searches the PATH environment variable for the given command.
+ * Searches the PATH environment variable for the given executable name.
  *
- * @param command  Command name to search for.
- * @return         Malloc'd Full path to the binary, or NULL if not found.
+ * @param program_name  Name of the binary to search for (e.g., "ls", "grep").
+ * @return              Malloc'd full path to the binary, or NULL if not found.
+ *                      Caller is responsible for freeing the result.
  */
 char *util_find_bin_in_path(char *command) {
     const char *path = getenv("PATH");
