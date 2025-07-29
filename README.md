@@ -41,7 +41,14 @@ cmake -B build
 cmake --build build
 ./build/sleepyshell
 ```
+
+### 🔬 Run tests
+```bash
+cd build
+ctest
+```
+
 Alternatively, if you prefer raw gcc:
 ```bash
-gcc app/*.c -o sleepyshell
+gcc src/*.c -o sleepyshell
 ./sleepyshell
