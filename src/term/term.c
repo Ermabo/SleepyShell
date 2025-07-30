@@ -22,7 +22,6 @@ void term_enable_raw_mode() {
 
     raw.c_lflag &= ~(ECHO | ICANON | ISIG | IEXTEN);
     raw.c_iflag &= ~(IXON | ICRNL);
-    raw.c_oflag &= ~(OPOST);
     raw.c_cc[VMIN] = 1;
     raw.c_cc[VTIME] = 0;
 
