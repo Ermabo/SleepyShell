@@ -1,10 +1,11 @@
 #define _POSIX_C_SOURCE 200809L
 #include "builtins.h"
 #include "path_utils.h"
+#include "term/term.h"
 #include "tokenizer.h"
 
 #include <assert.h>
-#include <errno.h>
+#include <ctype.h>
 #include <fcntl.h>
 #include <stdbool.h>
 #include <stdio.h>
@@ -217,7 +218,28 @@ static void execute_command(const char *program_name, char *argv[16], RedirSpec 
     free(bin_full_path);
 }
 
-int main(void) {
+int main(int argc, char *argv[]) {
+    // TODO: Finish rawmode implementation. This is just for test
+    if (argc > 1 && strcmp(argv[1], "-raw") == 0) {
+        term_enable_raw_mode();
+
+        printf("Raw mode enabled. Press 'q' to quit.\n");
+
+        while (1) {
+            char c;
+            if (read(STDIN_FILENO, &c, 1) == -1) {
+                perror("read");
+                return 1;
+            }
+
+            printf("Pressed: '%c' (ASCII: %d)\n", isprint(c) ? c : '?', c);
+
+            if (c == 'q')
+                break;
+        }
+
+        return 0;
+    }
     while (1) {
         setbuf(stdout, NULL);
         printf("$ ");

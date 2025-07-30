@@ -11,6 +11,7 @@ add_executable(sleepyshell
         src/builtins.c
         src/path_utils.c
         src/tokenizer.c
+        src/term/term.c
 )
 
 add_executable(tokenizer_test
