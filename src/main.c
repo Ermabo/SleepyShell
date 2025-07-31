@@ -220,6 +220,7 @@ static void execute_command(const char *program_name, char *argv[16], RedirSpec 
 
 int main(int argc, char *argv[]) {
     // TODO: Finish rawmode implementation. This is just for test
+    // TODO: If TERM env var is null we use fgets and bypass raw
     if (argc > 1 && strcmp(argv[1], "-raw") == 0) {
         term_enable_raw_mode();
 
@@ -238,6 +239,7 @@ int main(int argc, char *argv[]) {
                 break;
         }
 
+        term_disable_raw_mode();
         return 0;
     }
     while (1) {

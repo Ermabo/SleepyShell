@@ -1,14 +1,22 @@
+#define _POSIX_C_SOURCE 200809L
 #include "term.h"
 
 #include <assert.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <termios.h>
 #include <unistd.h>
 
 static bool term_raw_enabled = false;
 static struct termios orig_termios;
+#define INPUT_CAPACITY 1024
+typedef struct {
+    unsigned char buffer[INPUT_CAPACITY];
+    int length;
+    int cursor_pos;
+} InputState;
 
 void term_enable_raw_mode() {
     if (tcgetattr(STDIN_FILENO, &orig_termios) == -1) {
@@ -40,4 +48,32 @@ void term_disable_raw_mode() {
         perror("tcsetattr");
         exit(1);
     }
+}
+
+char *term_read_input_raw() {
+    InputState input = {0};
+
+    while (true) {
+        unsigned char c;
+        if (read(STDIN_FILENO, &c, 1) != 1)
+            continue;
+        if (c == '\r') {
+            write(STDOUT_FILENO, "\n", 1);
+            break;
+        }
+
+        if (c == 'q') {
+            return NULL;
+        }
+
+        write(STDOUT_FILENO, &c, 1);
+
+        if (input.length < INPUT_CAPACITY - 1) {
+            input.buffer[input.length++] = c;
+        }
+    }
+
+    input.buffer[input.length] = '\0';
+
+    return strdup(input.buffer);
 }
