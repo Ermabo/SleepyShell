@@ -50,13 +50,28 @@ void term_disable_raw_mode() {
     }
 }
 
+static void redraw_input_line(const InputState *input) {
+    write(STDOUT_FILENO, "\x1b[2K\r", 5);
+    write(STDOUT_FILENO, "$ ", 2);
+
+    write(STDOUT_FILENO, input->buffer, input->length);
+
+    char seq[32];
+    snprintf(seq, sizeof(seq), "\x1b[%dG",
+             3 + input->cursor_pos); // 3 = 2 prompt chars + 1-based index
+    write(STDOUT_FILENO, seq, strlen(seq));
+}
+
 char *term_read_input_raw() {
     InputState input = {0};
+
+    // \x7f backspace
 
     while (true) {
         unsigned char c;
         if (read(STDIN_FILENO, &c, 1) != 1)
             continue;
+
         if (c == '\r') {
             write(STDOUT_FILENO, "\n", 1);
             break;
