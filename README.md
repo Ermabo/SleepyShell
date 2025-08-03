@@ -27,6 +27,7 @@ I started this project through the [Codecrafters "Build your own Shell"](https:/
 This has been a way to explore:
 
 - `fork`, `exec`, `wait`, `dup`, `dup2`, `open`
+- Input handling in raw mode
 - Tokenization and quoting rules
 - Building clean(ish) C abstractions
 - Where things break (and why)
