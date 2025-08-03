@@ -9,6 +9,7 @@ Work in progress, full of TODOs and questionable decisions – by design.
 
 ## 🔧 Features so far
 
+- Basic line editing using raw mode
 - Basic command parsing
 - Built-in commands: `cd`, `pwd`, `echo`, `exit`, `type`
 - PATH resolution with `execv`
