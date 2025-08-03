@@ -221,13 +221,16 @@ static void execute_command(const char *program_name, char *argv[16], RedirSpec 
 int main(int argc, char *argv[]) {
     // TODO: Finish rawmode implementation. This is just for test
     // TODO: If TERM env var is null we use fgets and bypass raw
+
     if (argc > 1 && strcmp(argv[1], "-raw") == 0) {
         term_enable_raw_mode();
 
         printf("Raw mode enabled. Press 'q' to quit.\n");
 
         while (1) {
-            char c;
+            char *input = term_read_input_raw();
+            free(input);
+            /*char c;
             if (read(STDIN_FILENO, &c, 1) == -1) {
                 perror("read");
                 return 1;
@@ -236,7 +239,8 @@ int main(int argc, char *argv[]) {
             printf("Pressed: '%c' (ASCII: %d)\n", isprint(c) ? c : '?', c);
 
             if (c == 'q')
-                break;
+                break*/
+            ;
         }
 
         term_disable_raw_mode();
