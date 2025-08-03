@@ -2,6 +2,8 @@
 #include <assert.h>
 #include <string.h>
 
+// TODO: Add more tests, especially for edge cases
+
 int main(void) {
     // Arrange
     char *buffer[10];
