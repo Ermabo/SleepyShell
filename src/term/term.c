@@ -81,6 +81,8 @@ char *term_read_input_raw() {
 
     while (true) {
         unsigned char c;
+        unsigned char seq[8] = {0};
+
         if (read(STDIN_FILENO, &c, 1) != 1)
             continue;
 
@@ -91,6 +93,22 @@ char *term_read_input_raw() {
 
         if (c == 'q') {
             return NULL;
+        }
+
+        if (c == '\x1b') {
+            if (read(STDIN_FILENO, &seq[0], 1) != 1)
+                continue;
+            if (read(STDIN_FILENO, &seq[1], 1) != 1)
+                continue;
+
+            if (seq[0] == '[') {
+                if (seq[1] == 'D') {
+                    if (input.cursor_pos > 0) {
+                        input.cursor_pos--;
+                        redraw_input_line(&input);
+                    }
+                }
+            }
         }
 
         if (char_is_backspace(c) && input.length > 0) {
