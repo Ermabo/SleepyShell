@@ -12,7 +12,7 @@
 
 #define INPUT_CAPACITY 1024
 #define PROMPT "$ "
-#define PROMPT_LEN 2
+#define PROMPT_LEN (sizeof(PROMPT) - 1)
 
 static bool term_raw_enabled = false;
 static struct termios orig_termios;
@@ -30,16 +30,28 @@ static bool char_is_backspace(const unsigned char c) {
     return c == KEY_BACKSPACE_CTRL_H || c == KEY_BACKSPACE_DEL;
 }
 
+void term_disable_raw_mode() {
+    assert(term_raw_enabled && "term_disable_raw_mode called before enable");
+
+    if (tcsetattr(STDIN_FILENO, TCSAFLUSH, &orig_termios) == -1) {
+        perror("tcsetattr");
+        return;
+    }
+    term_raw_enabled = false;
+}
+
 void term_enable_raw_mode() {
+    if (!isatty(STDIN_FILENO))
+        return;
+
     if (tcgetattr(STDIN_FILENO, &orig_termios) == -1) {
         perror("tcgetattr");
         exit(1);
     }
 
-    atexit(term_disable_raw_mode);
-
     struct termios raw = orig_termios;
 
+    // TODO(signals): reconsider ISIG so Ctrl-C/Ctrl-Z work like a typical shell.
     raw.c_lflag &= ~(ECHO | ICANON | ISIG | IEXTEN);
     raw.c_iflag &= ~(IXON | ICRNL);
     raw.c_cc[VMIN] = 1;
@@ -50,19 +62,13 @@ void term_enable_raw_mode() {
         exit(1);
     }
 
+    atexit(term_disable_raw_mode);
+
     term_raw_enabled = true;
 }
 
-void term_disable_raw_mode() {
-    assert(term_raw_enabled && "term_disable_raw_mode called before enable");
-
-    if (tcsetattr(STDIN_FILENO, TCSAFLUSH, &orig_termios) == -1) {
-        perror("tcsetattr");
-        exit(1);
-    }
-}
-
 static void redraw_input_line(const InputState *input) {
+    // TODO: Wrap in write_all() helper to handle partial writes
     write(STDOUT_FILENO, "\x1b[2K\r", 5);
     write(STDOUT_FILENO, PROMPT, PROMPT_LEN);
 
@@ -86,16 +92,20 @@ char *term_read_input_raw() {
         if (read(STDIN_FILENO, &c, 1) != 1)
             continue;
 
+        // TODO: Also accept '\n' as Enter
         if (c == '\r') {
             write(STDOUT_FILENO, "\n", 1);
             break;
         }
 
+        // TODO: Remove this temporary quit key
         if (c == 'q') {
             return NULL;
         }
 
         if (c == '\x1b') {
+            // TODO: Replace blocking reads with select() + timeout to handle bare ESC
+            // TODO: Parse more keys: Up/Down, Home, End, Delete
             if (read(STDIN_FILENO, &seq[0], 1) != 1)
                 continue;
             if (read(STDIN_FILENO, &seq[1], 1) != 1)
@@ -106,12 +116,20 @@ char *term_read_input_raw() {
                     if (input.cursor_pos > 0) {
                         input.cursor_pos--;
                         redraw_input_line(&input);
+                        continue;
+                    }
+                } else if (seq[1] == 'C') {
+                    if (input.cursor_pos < input.length) {
+                        input.cursor_pos++;
+                        redraw_input_line(&input);
+                        continue;
                     }
                 }
             }
         }
 
         if (char_is_backspace(c) && input.length > 0) {
+            // TODO: Support mid-line backspace (shift text left instead of jumping to end)
             input.length--;
             input.cursor_pos = input.length;
             input.buffer[input.length] = '\0';
@@ -119,6 +137,7 @@ char *term_read_input_raw() {
         }
 
         if (is_visible_ascii(c) && input.length < INPUT_CAPACITY - 1) {
+            // TODO: Support mid-line insert (shift text right instead of always appending)
             input.buffer[input.length++] = c;
             input.cursor_pos = input.length;
 
