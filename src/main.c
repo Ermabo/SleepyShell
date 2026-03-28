@@ -150,7 +150,25 @@ error:
     return NULL;
 }
 
-void apply_all_redirection(RedirSpec specs[], const int count) {
+void restore_all_redirection(RedirSpec specs[], const int count) {
+    for (int i = 0; i < count; i++) {
+        RedirSpec *spec = &specs[i];
+
+        if (spec->saved_fd == -1)
+            continue;
+
+        if (dup2(spec->saved_fd, spec->target_fd) == -1) {
+            perror("dup2");
+            continue;
+        }
+
+        close(spec->saved_fd);
+
+        spec->saved_fd = -1;
+    }
+}
+
+bool apply_all_redirection(RedirSpec specs[], const int count) {
     for (int i = 0; i < count; i++) {
         RedirSpec *spec = &specs[i];
 
@@ -160,7 +178,8 @@ void apply_all_redirection(RedirSpec specs[], const int count) {
         int fd = open(spec->filename, spec->open_flags, 0644);
         if (fd == -1) {
             perror("open");
-            continue;
+            restore_all_redirection(specs, count);
+            return false;
         }
 
         spec->saved_fd = dup(spec->target_fd);
@@ -178,24 +197,8 @@ void apply_all_redirection(RedirSpec specs[], const int count) {
 
         close(fd);
     }
-}
 
-void restore_all_redirection(RedirSpec specs[], const int count) {
-    for (int i = 0; i < count; i++) {
-        RedirSpec *spec = &specs[i];
-
-        if (spec->saved_fd == -1)
-            continue;
-
-        if (dup2(spec->saved_fd, spec->target_fd) == -1) {
-            perror("dup2");
-            continue;
-        }
-
-        close(spec->saved_fd);
-
-        spec->saved_fd = -1;
-    }
+    return true;
 }
 
 static void execute_command(const char *program_name, char *argv[16], RedirSpec specs[],
